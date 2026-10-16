@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import pty from 'node-pty';
+import pty from './pty.js';
 import headless from '@xterm/headless';
 import serialize from '@xterm/addon-serialize';
 import { CLAUDE_BIN, childEnv } from './config.js';

@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -44,10 +45,16 @@ function resolveClaudeBin() {
     const out = execFileSync(IS_WIN ? 'where' : 'which', ['claude'], { encoding: 'utf8' });
     const lines = out.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     // On Windows prefer a real executable over a .cmd shim; ConPTY can't run shims directly.
-    return (IS_WIN && lines.find(l => /\.exe$/i.test(l))) || lines[0] || 'claude';
-  } catch {
-    return 'claude';
-  }
+    const found = (IS_WIN && lines.find(l => /\.exe$/i.test(l))) || lines[0];
+    if (found) return found;
+  } catch { /* not on PATH */ }
+  // Started from the desktop rather than a shell, the IDE may not have the
+  // shell's PATH, so also look where Claude's installers put it.
+  const home = os.homedir();
+  const known = IS_WIN
+    ? [path.join(home, '.local', 'bin', 'claude.exe')]
+    : [path.join(home, '.local', 'bin', 'claude'), path.join(home, '.claude', 'local', 'claude'), '/opt/homebrew/bin/claude', '/usr/local/bin/claude'];
+  return known.find(p => fs.existsSync(p)) || 'claude';
 }
 
 export const CLAUDE_BIN = resolveClaudeBin();

@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server/index.js",
     "open": "node server/index.js --open",
-    "app": "node server/index.js --app"
+    "app": "node server/index.js --app",
+    "build:exe": "node scripts/build-exe.mjs"
   },
   "type": "module",
   "dependencies": {
@@ -29,5 +30,13 @@
   "private": true,
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6"
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true,
+    "esbuild@0.28.2": true
   }
 }

@@ -1,4 +1,5 @@
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -12,8 +13,10 @@ import * as sessions from './sessions.js';
 import * as terminals from './terminals.js';
 import * as files from './files.js';
 import { transcriptIndex, fullToolCall, isSessionId } from './transcripts.js';
+import { VENDOR } from './vendor.js';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// The standalone executable sets __CLAUDE_IDE_ROOT to the folder it unpacked into.
+const ROOT = globalThis.__CLAUDE_IDE_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const nm = p => path.join(ROOT, 'node_modules', p);
 
 // ---------------------------------------------------------------- request guard
@@ -42,18 +45,7 @@ app.use(guard);
 app.use(express.json({ limit: '25mb' }));
 
 app.use(express.static(path.join(ROOT, 'public')));
-const vendor = {
-  preact: nm('preact'),
-  htm: nm('htm/dist'),
-  xterm: nm('@xterm/xterm'),
-  'xterm-fit': nm('@xterm/addon-fit/lib'),
-  'xterm-links': nm('@xterm/addon-web-links/lib'),
-  monaco: nm('monaco-editor/min'),
-  marked: nm('marked/lib'),
-  dompurify: nm('dompurify/dist'),
-  hljs: nm('@highlightjs/cdn-assets'),
-};
-for (const [name, dir] of Object.entries(vendor)) app.use(`/vendor/${name}`, express.static(dir, { maxAge: '1h' }));
+for (const [name, dir] of Object.entries(VENDOR)) app.use(`/vendor/${name}`, express.static(nm(dir), { maxAge: '1h' }));
 
 const api = express.Router();
 
@@ -228,24 +220,59 @@ setInterval(async () => {
 startProcessMonitor();
 sessions.startSessionMonitor();
 
-server.listen(PORT, HOST, () => {
-  const url = `http://localhost:${PORT}`;
-  console.log(`Claude IDE running at ${url}`);
-  console.log(`  claude binary: ${CLAUDE_BIN}`);
-  console.log(`  claude data:   ${CLAUDE_DIR}`);
-  if (process.argv.includes('--app')) openWindow(url, true);
-  else if (process.argv.includes('--open')) openWindow(url, false);
+const URL_ = `http://localhost:${PORT}`;
+const openRequested = () => {
+  if (process.argv.includes('--app')) openWindow(URL_, true);
+  else if (process.argv.includes('--open')) openWindow(URL_, false);
+};
+
+server.on('error', async err => {
+  if (err.code !== 'EADDRINUSE') throw err;
+  // Launching again (say, double-clicking the executable twice) opens the running IDE.
+  const running = await fetch(`${URL_}/api/info`).then(r => r.ok, () => false);
+  if (running) {
+    console.log(`Claude IDE is already running at ${URL_}`);
+    openRequested();
+    setTimeout(() => process.exit(0), 300);
+  } else {
+    console.error(`Port ${PORT} is in use by another program. Set CLAUDE_IDE_PORT to pick a different port.`);
+    // Leave a double-clicked console window open long enough to read this.
+    setTimeout(() => process.exit(1), globalThis.__CLAUDE_IDE_ROOT ? 15000 : 0);
+  }
 });
 
+server.listen(PORT, HOST, () => {
+  console.log(`Claude IDE running at ${URL_}`);
+  console.log(`  claude binary: ${CLAUDE_BIN}`);
+  console.log(`  claude data:   ${CLAUDE_DIR}`);
+  openRequested();
+  globalThis.__CLAUDE_IDE_CLEANUP?.();
+});
+
+// A Chromium-based browser, which can show the IDE in a window of its own
+// without tabs or an address bar.
+function appBrowser() {
+  if (IS_WIN) {
+    return [
+      path.join(process.env['ProgramFiles(x86)'] || '', 'Microsoft/Edge/Application/msedge.exe'),
+      path.join(process.env.ProgramFiles || '', 'Microsoft/Edge/Application/msedge.exe'),
+      path.join(process.env.ProgramFiles || '', 'Google/Chrome/Application/chrome.exe'),
+    ].find(b => fs.existsSync(b));
+  }
+  if (process.platform === 'darwin') {
+    return ['Google Chrome', 'Microsoft Edge', 'Chromium', 'Brave Browser']
+      .flatMap(app => ['/Applications', path.join(os.homedir(), 'Applications')]
+        .map(dir => path.join(dir, `${app}.app`, 'Contents', 'MacOS', app)))
+      .find(b => fs.existsSync(b));
+  }
+  const dirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  return ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'microsoft-edge', 'brave-browser']
+    .flatMap(name => dirs.map(dir => path.join(dir, name)))
+    .find(b => fs.existsSync(b));
+}
+
 function openWindow(url, appMode) {
-  const browsers = IS_WIN
-    ? [
-        path.join(process.env['ProgramFiles(x86)'] || '', 'Microsoft/Edge/Application/msedge.exe'),
-        path.join(process.env.ProgramFiles || '', 'Microsoft/Edge/Application/msedge.exe'),
-        path.join(process.env.ProgramFiles || '', 'Google/Chrome/Application/chrome.exe'),
-      ]
-    : [];
-  const browser = appMode && browsers.find(b => fs.existsSync(b));
+  const browser = appMode && appBrowser();
   if (browser) spawn(browser, [`--app=${url}`], { detached: true, stdio: 'ignore' }).unref();
   else if (IS_WIN) spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   else spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();

@@ -24,10 +24,49 @@ npm start          # then open http://localhost:4477
 npm run app        # same, but opens a standalone Edge/Chrome app window
 ```
 
-On Windows you can also double-click **`Claude IDE.cmd`**.
+On Windows you can also double-click **`Claude IDE.cmd`**. On Linux, `npm install` compiles
+node-pty, which needs `python3`, `make` and a C++ compiler (`sudo apt install build-essential
+python3` on Debian or Ubuntu). Windows and macOS use prebuilt binaries.
 
 > Claude sessions started *inside* the IDE are child processes of the server. Stopping the server
 > ends them. Their chats are saved, so you can resume them from History.
+
+## Standalone executable
+
+To run the IDE on a machine without Node.js, build it into a single executable:
+
+```
+npm install
+npm run build:exe   # writes dist/claude-ide, or dist\claude-ide.exe on Windows
+```
+
+That builds for the system you run it on. To build for every platform, run the **Build
+executables** workflow from the repo's Actions tab. It builds on GitHub's machines for Windows
+(x64), macOS (Apple silicon and Intel) and Linux (x64 and ARM), and puts the files on the run's
+page. Pushing a version tag such as `v0.2.0` also attaches them to that GitHub release.
+
+The executable is a [Node single executable application](https://nodejs.org/api/single-executable-applications.html):
+a copy of the Node runtime with the server, web UI and node-pty embedded. It's 100-130 MB, almost
+all of it the Node runtime. It doesn't use Electron. The app window is your installed Chrome, Edge,
+Chromium or Brave in app mode, or your default browser if none of those is installed.
+
+- **Windows:** double-click `claude-ide.exe`. The console window that opens with it is the server.
+  Closing it stops the IDE and any Claude sessions started in it.
+- **macOS:** double-click `claude-ide` in Finder, which runs it in Terminal, or run it from a
+  terminal. The build isn't signed by a registered Apple developer, so macOS blocks a downloaded
+  copy. Run `xattr -d com.apple.quarantine claude-ide` once to allow it.
+- **Linux:** run `./claude-ide` from a terminal. Builds from the workflow are made on Ubuntu
+  22.04 and need a distribution at least that recent.
+- If the IDE is already running, starting it again just opens another window.
+- `--open` opens a browser tab instead of an app window, and `--no-open` opens nothing.
+- The first run of each build unpacks about 35 MB to `%LOCALAPPDATA%\claude-ide` (Windows),
+  `~/Library/Caches/claude-ide` (macOS) or `~/.cache/claude-ide` (Linux), then removes folders left
+  by older builds.
+- The `claude` CLI still has to be installed.
+- On Windows the executable isn't code-signed, so SmartScreen may warn the first time you run it.
+
+The build embeds the Node version that runs `npm run build:exe`. On Linux that has to be an
+official build from nodejs.org (or nvm, fnm, etc.), not a distribution's `nodejs` package.
 
 ## How it works
 
@@ -73,6 +112,14 @@ server/
   terminals.js    node-pty sessions mirrored by a headless xterm
   files.js        directory listing, read/write, markdown search
   processes.js    PID liveness checks
+  pty.js          loads node-pty (from the unpacked folder in the executable)
+  vendor.js       browser libraries served from node_modules
+packaging/
+  sea-main.cjs    entry point of the standalone executable
+scripts/
+  build-exe.mjs   builds the standalone executable
+.github/workflows/
+  build.yml       builds it for every platform
 public/
   index.html      import map; no build step
   styles.css
