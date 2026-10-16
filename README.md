@@ -79,3 +79,7 @@ public/
   js/             Preact + htm components (main, sidebar, dashboard, terminal,
                   transcript, fileview, inspector, newchat)
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
