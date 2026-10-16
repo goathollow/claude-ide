@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Claude IDE</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "preact": "/vendor/preact/dist/preact.mjs",
+      "preact/hooks": "/vendor/preact/hooks/dist/hooks.mjs",
+      "htm": "/vendor/htm/htm.module.js",
+      "marked": "/vendor/marked/marked.esm.js",
+      "dompurify": "/vendor/dompurify/purify.es.mjs",
+      "highlight.js": "/vendor/hljs/es/highlight.min.js",
+      "@xterm/xterm": "/vendor/xterm/lib/xterm.mjs",
+      "@xterm/addon-fit": "/vendor/xterm-fit/addon-fit.mjs",
+      "@xterm/addon-web-links": "/vendor/xterm-links/addon-web-links.mjs"
+    }
+  }
+  </script>
+  <script>
+    try { document.documentElement.dataset.theme = localStorage.getItem('ide.theme') || 'dark'; } catch {}
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
