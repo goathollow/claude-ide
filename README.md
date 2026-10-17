@@ -33,7 +33,18 @@ python3` on Debian or Ubuntu). Windows and macOS use prebuilt binaries.
 
 ## Standalone executable
 
-To run the IDE on a machine without Node.js, build it into a single executable:
+The IDE also comes as a single executable that runs without Node.js. Each
+[release](https://github.com/goathollow/claude-ide/releases) has one for Windows, macOS and Linux.
+On macOS and Linux, this installs the latest one to `~/.local/bin` (run it again to update):
+
+```
+curl -fsSL https://raw.githubusercontent.com/goathollow/claude-ide/main/install.sh | sh
+```
+
+Set `CLAUDE_IDE_VERSION` (such as `v0.2.1`) or `CLAUDE_IDE_INSTALL_DIR` to change what it installs
+or where.
+
+To build it yourself:
 
 ```
 npm install
@@ -52,16 +63,18 @@ Chromium or Brave in app mode, or your default browser if none of those is insta
 
 - **Windows:** double-click `claude-ide.exe`. The console window that opens with it is the server.
   Closing it stops the IDE and any Claude sessions started in it.
-- **macOS:** double-click `claude-ide` in Finder, which runs it in Terminal, or run it from a
-  terminal. The build isn't signed by a registered Apple developer, so macOS blocks a downloaded
-  copy. Run `xattr -d com.apple.quarantine claude-ide` once to allow it.
-- **Linux:** run `./claude-ide` from a terminal. Builds from the workflow are made on Ubuntu
-  22.04 and need a distribution at least that recent.
+- **macOS:** run `claude-ide` in a terminal, or double-click it in Finder, which runs it in
+  Terminal. The build isn't notarized by Apple, so macOS refuses to open a copy downloaded with a
+  browser and offers to move it to the Trash. The install command above avoids that. For a
+  browser download, run `xattr -d com.apple.quarantine claude-ide` once, or click **Open Anyway**
+  under System Settings > Privacy & Security after the first attempt.
+- **Linux:** run `claude-ide` in a terminal. Release builds are made on Ubuntu 22.04 and need a
+  distribution at least that recent.
 - If the IDE is already running, starting it again just opens another window.
 - `--open` opens a browser tab instead of an app window, and `--no-open` opens nothing.
 - The first run of each build unpacks about 35 MB to `%LOCALAPPDATA%\claude-ide` (Windows),
   `~/Library/Caches/claude-ide` (macOS) or `~/.cache/claude-ide` (Linux), then removes folders left
-  by older builds.
+  by older builds. Errors are also written to `claude-ide.log` in that folder.
 - The `claude` CLI still has to be installed.
 - On Windows the executable isn't code-signed, so SmartScreen may warn the first time you run it.
 
@@ -120,6 +133,7 @@ scripts/
   build-exe.mjs   builds the standalone executable
 .github/workflows/
   build.yml       builds it for every platform
+install.sh        installs a release build on macOS or Linux
 public/
   index.html      import map; no build step
   styles.css
