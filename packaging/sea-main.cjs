@@ -7,6 +7,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const util = require('node:util');
 const zlib = require('node:zlib');
 const { createRequire } = require('node:module');
 const sea = require('node:sea');
@@ -30,9 +31,26 @@ function cacheDir() {
   return process.env.XDG_CACHE_HOME || path.join(home, '.cache');
 }
 
-function unpack() {
+// A console window opened by double-clicking closes as soon as the process
+// exits, taking any error message with it, so errors also go to a log file.
+function logErrors(base) {
+  const file = path.join(base, 'claude-ide.log');
+  fs.mkdirSync(base, { recursive: true });
+  try { if (fs.statSync(file).size > 1 << 20) fs.rmSync(file); } catch { /* no log yet */ }
+  const write = text => {
+    try { fs.appendFileSync(file, `[${new Date().toISOString()}] ${text}\n`); } catch { /* best effort */ }
+  };
+  const consoleError = console.error;
+  console.error = (...args) => {
+    write(util.format(...args));
+    consoleError(...args);
+  };
+  process.on('uncaughtExceptionMonitor', (err, origin) => write(`${origin}: ${err?.stack || err}`));
+  write(`started pid ${process.pid}: ${process.argv.slice(1).join(' ')}`);
+}
+
+function unpack(base) {
   const id = sea.getAsset('build-id', 'utf8').trim();
-  const base = path.join(cacheDir(), 'claude-ide');
   const root = path.join(base, `app-${id}`);
 
   // Remove folders left by older builds. Called once this copy is serving, so a
@@ -74,7 +92,9 @@ function unpack() {
 
 if (!runPtyHelper()) {
   process.title = 'Claude IDE';
-  globalThis.__CLAUDE_IDE_ROOT = unpack();
+  const base = path.join(cacheDir(), 'claude-ide');
+  logErrors(base);
+  globalThis.__CLAUDE_IDE_ROOT = unpack(base);
   // Double-clicking the executable should open the app window.
   if (!process.argv.some(a => a === '--app' || a === '--open' || a === '--no-open')) process.argv.push('--app');
   require('../server/index.js');
