@@ -468,6 +468,7 @@ input.text:focus, select.text:focus { border-color: var(--accent); }
   width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 60px); display: flex; flex-direction: column;
   background: var(--bg); border: 1px solid var(--border-strong); border-radius: 12px; box-shadow: var(--shadow);
 }
+.dialog.small { width: min(420px, calc(100vw - 32px)); }
 .dialog header { padding: 16px 18px 6px; font-size: 16px; font-weight: 650; }
 .dialog .body { padding: 8px 18px; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
 .dialog footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px 16px; }

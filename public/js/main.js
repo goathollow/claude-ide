@@ -248,6 +248,7 @@ function App() {
   const sidebarWidth = useStore(s => s.sidebarWidth);
   const inspectorOpen = useStore(s => s.inspectorOpen);
   const dialog = useStore(s => s.dialog);
+  const quit = useStore(s => s.quit);
   const activeSid = useStore(s => sessionIdForTab(s.tabs.find(t => t.id === s.activeTab), s));
   const activeCwd = useStore(s => sessionInfo(activeSid, s)?.cwd || null);
   const liveSig = useStore(s => s.live.map(l => l.sessionId + l.statusUpdatedAt).join());
@@ -292,6 +293,11 @@ function App() {
     ${dialog?.type === 'new-chat' && html`<${NewChatDialog} cwd=${dialog.cwd} />`}
     ${dialog?.type === 'open-folder' && html`<${OpenFolderDialog} cwd=${dialog.cwd} />`}
     <${Toasts} />
+    ${quit && html`<div class="scrim"><div class="dialog small">
+      <header>Claude IDE has quit</header>
+      <div class="body">You can close this window. Start Claude IDE again to pick up where you left off.</div>
+      <footer></footer>
+    </div></div>`}
   </div>`;
 }
 
@@ -335,8 +341,27 @@ events.on('live', m => {
   if (m.sessions.some(l => !known.has(l.sessionId))) refreshLists();
 });
 
-events.on('terminals', m => setState({ terminals: m.terminals, terminalsLoaded: true }));
-events.on('reconnected', () => refreshLists());
+// A window opened from a notification goes to its session once the server has
+// said which sessions are running (it sends them before the terminals).
+let linkedSession = /^#session=([\w-]+)$/.exec(location.hash)?.[1];
+if (linkedSession) history.replaceState(null, '', location.pathname);
+
+events.on('terminals', m => {
+  setState({ terminals: m.terminals, terminalsLoaded: true });
+  if (linkedSession) openSession(linkedSession);
+  linkedSession = null;
+});
+events.on('reconnected', () => {
+  setState({ quit: false });
+  refreshLists();
+});
+
+// Quitting closes every window. Browsers only let a script close a window that
+// hasn't navigated, so one that stays open says the IDE has quit.
+events.on('quit', () => {
+  setState({ quit: true });
+  window.close();
+});
 
 // Window title shows how many sessions want attention.
 setInterval(() => {

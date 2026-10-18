@@ -55,6 +55,15 @@ export function goHome() {
   setState({ activeTab: 'home' });
 }
 
+// Stops the server, which ends the Claude sessions started in the IDE. Closing
+// the window instead leaves them running.
+export async function quitIde() {
+  const n = getState().terminals.filter(t => !t.exited).length;
+  const [what, them] = n === 1 ? ['the Claude session', 'it'] : [`the ${n} Claude sessions`, 'them'];
+  if (n && !confirm(`Quit Claude IDE? This stops ${what} running in it (you can resume ${them} later from History).\n\nTo leave ${them} running, close the window instead.`)) return;
+  await api.post('/api/quit').catch(() => {});
+}
+
 // ---------------------------------------------------------------- chats
 
 export async function startChat({ cwd, name, permissionMode, model, resume }) {

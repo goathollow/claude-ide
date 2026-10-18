@@ -12,12 +12,18 @@ import { startProcessMonitor } from './processes.js';
 import * as sessions from './sessions.js';
 import * as terminals from './terminals.js';
 import * as files from './files.js';
+import { notify } from './notify.js';
 import { transcriptIndex, fullToolCall, isSessionId } from './transcripts.js';
 import { VENDOR } from './vendor.js';
 
 // The standalone executable sets __CLAUDE_IDE_ROOT to the folder it unpacked into.
 const ROOT = globalThis.__CLAUDE_IDE_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const nm = p => path.join(ROOT, 'node_modules', p);
+
+// The standalone executable has no console window to stop it with, so when it
+// opens the IDE's window itself, it quits once its last window has closed and
+// the Claude sessions started in it have ended.
+const QUIT_WHEN_CLOSED = Boolean(globalThis.__CLAUDE_IDE_ROOT) && !process.argv.includes('--no-open');
 
 // ---------------------------------------------------------------- request guard
 // The server can start processes and write files, so only this machine's
@@ -50,7 +56,13 @@ for (const [name, dir] of Object.entries(VENDOR)) app.use(`/vendor/${name}`, exp
 const api = express.Router();
 
 api.get('/info', (req, res) => {
-  res.json({ claudeDir: CLAUDE_DIR, claudeBin: CLAUDE_BIN, platform: process.platform, home: process.env.USERPROFILE || process.env.HOME, permissionModes: terminals.PERMISSION_MODES });
+  res.json({
+    claudeDir: CLAUDE_DIR,
+    claudeBin: CLAUDE_BIN,
+    platform: process.platform,
+    home: process.env.USERPROFILE || process.env.HOME,
+    permissionModes: terminals.PERMISSION_MODES,
+  });
 });
 
 api.get('/live', (req, res) => res.json(liveView()));
@@ -90,8 +102,8 @@ api.post('/reveal', (req, res) => {
   const p = files.resolvePath(req.body?.path);
   if (!fs.existsSync(p)) return res.status(404).json({ error: 'Not found' });
   const isDir = fs.statSync(p).isDirectory();
-  if (IS_WIN) spawn('explorer.exe', isDir ? [p] : [`/select,${p}`], { detached: true, stdio: 'ignore' }).unref();
-  else spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [isDir ? p : path.dirname(p)], { detached: true, stdio: 'ignore' }).unref();
+  if (IS_WIN) launch('explorer.exe', isDir ? [p] : [`/select,${p}`]);
+  else launch(process.platform === 'darwin' ? 'open' : 'xdg-open', [isDir ? p : path.dirname(p)]);
   res.json({ ok: true });
 });
 
@@ -107,6 +119,14 @@ api.post('/terminals', (req, res) => {
   res.json(terminals.createTerminal(req.body || {}));
 });
 api.delete('/terminals/:id', (req, res) => res.json({ ok: terminals.closeTerminal(req.params.id) }));
+
+// Quitting ends the Claude sessions started in the IDE. Every window is told
+// first so it can close as well.
+api.post('/quit', (req, res) => {
+  res.json({ ok: true });
+  broadcast({ t: 'quit' });
+  setTimeout(shutdown, 200);
+});
 
 app.use('/api', api);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Unknown endpoint' }));
@@ -177,6 +197,47 @@ terminals.events.on('changed', () => {
   broadcast({ t: 'live', sessions: liveView() });
 });
 
+// ---------------------------------------------------------------- notifications
+// An open window notifies you itself. With none open, the server tells you
+// when a Claude session started in the IDE needs you or has finished.
+
+const lastStatus = new Map();
+sessions.events.on('live', () => {
+  const live = liveView();
+  for (const s of live) {
+    const before = lastStatus.get(s.sessionId);
+    if (eventClients.size || !s.terminalId || !before || before === s.status) continue;
+    const name = s.title || path.basename(s.cwd);
+    if (s.status === 'waiting') {
+      notifySession(s, `${name} needs you`, `Waiting for ${s.waitingFor || 'input'}${s.lastTool ? ` · ${s.lastTool.name}: ${s.lastTool.summary}` : ''}`);
+    } else if (s.status === 'idle' && (before === 'busy' || before === 'shell')) {
+      notifySession(s, `${name} finished`, firstLine(s.lastText?.text));
+    }
+  }
+  lastStatus.clear();
+  for (const s of live) lastStatus.set(s.sessionId, s.status);
+});
+
+function notifySession(s, title, body) {
+  // The executable registers claude-ide:// links to start itself. Run from
+  // source, there's nothing to register, so the link is the page itself.
+  const exe = globalThis.__CLAUDE_IDE_ROOT ? process.execPath : null;
+  notify({
+    title,
+    body: body.slice(0, 200),
+    tag: s.sessionId,
+    link: exe ? `claude-ide://session/${s.sessionId}` : `${URL_}/#session=${s.sessionId}`,
+    exe,
+    icon: path.join(ROOT, 'public', 'icon.png'),
+  });
+}
+
+// The first line of a Markdown reply, without the most common markup.
+const firstLine = md => (md || '')
+  .replace(/```[\s\S]*?(```|$)/g, ' ')
+  .replace(/`|\*\*|^\s*#+\s+/gm, '')
+  .split('\n').map(l => l.trim()).find(Boolean) || '';
+
 // Push transcript growth and file changes to whoever is watching them.
 const fileStamps = new Map();
 let watching = false;
@@ -221,23 +282,28 @@ startProcessMonitor();
 sessions.startSessionMonitor();
 
 const URL_ = `http://localhost:${PORT}`;
+// Clicking a notification on Windows starts the executable with a
+// claude-ide://session/<id> link, and the window opens on that session.
+const linkedSession = process.argv.map(a => /^claude-ide:\/\/session\/([\w-]+)/i.exec(a)?.[1]).find(isSessionId);
 const openRequested = () => {
-  if (process.argv.includes('--app')) openWindow(URL_, true);
-  else if (process.argv.includes('--open')) openWindow(URL_, false);
+  const url = linkedSession ? `${URL_}/#session=${linkedSession}` : URL_;
+  if (process.argv.includes('--app')) openWindow(url, true);
+  else if (process.argv.includes('--open')) openWindow(url, false);
 };
 
 server.on('error', async err => {
   if (err.code !== 'EADDRINUSE') throw err;
   // Launching again (say, double-clicking the executable twice) opens the running IDE.
-  const running = await fetch(`${URL_}/api/info`).then(r => r.ok, () => false);
+  const running = await fetch(`${URL_}/api/info`, { signal: AbortSignal.timeout(2000) }).then(r => r.ok, () => false);
   if (running) {
     console.log(`Claude IDE is already running at ${URL_}`);
     openRequested();
     setTimeout(() => process.exit(0), 300);
   } else {
-    console.error(`Port ${PORT} is in use by another program. Set CLAUDE_IDE_PORT to pick a different port.`);
-    // Leave a double-clicked console window open long enough to read this.
-    setTimeout(() => process.exit(1), globalThis.__CLAUDE_IDE_ROOT ? 15000 : 0);
+    const message = `Port ${PORT} is in use by another program. Set CLAUDE_IDE_PORT to pick a different port.`;
+    console.error(message);
+    globalThis.__CLAUDE_IDE_ALERT?.(message);
+    setTimeout(() => process.exit(1), 300);
   }
 });
 
@@ -248,6 +314,27 @@ server.listen(PORT, HOST, () => {
   openRequested();
   globalThis.__CLAUDE_IDE_CLEANUP?.();
 });
+
+if (QUIT_WHEN_CLOSED) {
+  // Give the browser time to start, then quit once no window has been connected
+  // for 15 seconds, which leaves time to reload the page. Claude sessions keep
+  // running in the background with no window open, and starting the IDE again
+  // opens a window onto them.
+  let lastSeen = Date.now() + 45000;
+  setInterval(() => {
+    if (eventClients.size || terminals.listTerminals().some(t => !t.exited)) lastSeen = Date.now();
+    else if (Date.now() - lastSeen > 15000) shutdown();
+  }, 1000).unref();
+
+  // On macOS and Linux it runs in the terminal it was started from. Closing that
+  // terminal shouldn't close the IDE or end its sessions, so ignore the hangup
+  // and the errors from writing to a terminal that's gone.
+  if (!IS_WIN) {
+    process.on('SIGHUP', () => {});
+    process.stdout.on('error', () => {});
+    process.stderr.on('error', () => {});
+  }
+}
 
 // A Chromium-based browser, which can show the IDE in a window of its own
 // without tabs or an address bar.
@@ -273,9 +360,17 @@ function appBrowser() {
 
 function openWindow(url, appMode) {
   const browser = appMode && appBrowser();
-  if (browser) spawn(browser, [`--app=${url}`], { detached: true, stdio: 'ignore' }).unref();
-  else if (IS_WIN) spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
-  else spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
+  if (browser) launch(browser, [`--app=${url}`]);
+  else if (IS_WIN) launch('cmd', ['/c', 'start', '', url], { windowsHide: true });
+  else launch(process.platform === 'darwin' ? 'open' : 'xdg-open', [url]);
+}
+
+// Starts a program that runs on its own. One that can't be found is logged
+// instead of taking the server down.
+function launch(cmd, args, options = {}) {
+  spawn(cmd, args, { detached: true, stdio: 'ignore', ...options })
+    .on('error', e => console.error(`Couldn't start ${cmd}: ${e.message}`))
+    .unref();
 }
 
 function shutdown() {

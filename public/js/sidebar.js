@@ -4,7 +4,7 @@ import {
   shortPath, isMarkdown, sessionIdForTab,
 } from './lib.js';
 import {
-  openSession, openTerminal, openFile, newChatDialog, resumeSession, closeTab, reveal, refreshLists, toast,
+  openSession, openTerminal, openFile, newChatDialog, resumeSession, closeTab, reveal, refreshLists, toast, quitIde,
 } from './actions.js';
 import { Icon } from './icons.js';
 
@@ -63,6 +63,9 @@ export function ActivityBar() {
     </button>
     <button class="act" title="Toggle light/dark theme" onClick=${toggleTheme}>
       <${Icon} name=${theme === 'light' ? 'moon' : 'sun'} size=${18} />
+    </button>
+    <button class="act" title="Quit Claude IDE (closing the window leaves its sessions running)" onClick=${quitIde}>
+      <${Icon} name="power" size=${18} />
     </button>
   </nav>`;
 }

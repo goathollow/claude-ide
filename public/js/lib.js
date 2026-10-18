@@ -56,6 +56,7 @@ let state = {
   draggingTab: null,
   dialog: null,
   toasts: [],
+  quit: false,
   ...loadPersisted(),
 };
 if (!state.tabs.some(t => t.id === 'home')) state.tabs.unshift({ id: 'home', type: 'home' });

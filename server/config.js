@@ -42,7 +42,7 @@ export function childEnv() {
 function resolveClaudeBin() {
   if (process.env.CLAUDE_IDE_CLAUDE_BIN) return process.env.CLAUDE_IDE_CLAUDE_BIN;
   try {
-    const out = execFileSync(IS_WIN ? 'where' : 'which', ['claude'], { encoding: 'utf8' });
+    const out = execFileSync(IS_WIN ? 'where' : 'which', ['claude'], { encoding: 'utf8', windowsHide: true });
     const lines = out.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     // On Windows prefer a real executable over a .cmd shim; ConPTY can't run shims directly.
     const found = (IS_WIN && lines.find(l => /\.exe$/i.test(l))) || lines[0];

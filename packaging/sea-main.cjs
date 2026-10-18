@@ -9,6 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const util = require('node:util');
 const zlib = require('node:zlib');
+const { spawn } = require('node:child_process');
 const { createRequire } = require('node:module');
 const sea = require('node:sea');
 
@@ -45,8 +46,25 @@ function logErrors(base) {
     write(util.format(...args));
     consoleError(...args);
   };
-  process.on('uncaughtExceptionMonitor', (err, origin) => write(`${origin}: ${err?.stack || err}`));
+  process.on('uncaughtExceptionMonitor', (err, origin) => {
+    write(`${origin}: ${err?.stack || err}`);
+    alertBox(`Claude IDE stopped because of an error:\n\n${err?.message || err}\n\nDetails are in ${file}`);
+  });
   write(`started pid ${process.pid}: ${process.argv.slice(1).join(' ')}`);
+}
+
+// The Windows build runs without a console, so problems that stop the IDE from
+// opening are shown in a message box. Elsewhere the terminal shows them.
+function alertBox(message) {
+  if (process.platform !== 'win32') return;
+  const script = "Add-Type -AssemblyName PresentationFramework; [void][System.Windows.MessageBox]::Show($env:CLAUDE_IDE_MESSAGE, 'Claude IDE', 'OK', 'Warning')";
+  // Not detached: PowerShell started without any console exits without showing
+  // the box. It still outlives this process.
+  spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    stdio: 'ignore',
+    windowsHide: true,
+    env: { ...process.env, CLAUDE_IDE_MESSAGE: message },
+  }).on('error', () => {}).unref();
 }
 
 function unpack(base) {
@@ -94,6 +112,7 @@ if (!runPtyHelper()) {
   process.title = 'Claude IDE';
   const base = path.join(cacheDir(), 'claude-ide');
   logErrors(base);
+  globalThis.__CLAUDE_IDE_ALERT = alertBox;
   globalThis.__CLAUDE_IDE_ROOT = unpack(base);
   // Double-clicking the executable should open the app window.
   if (!process.argv.some(a => a === '--app' || a === '--open' || a === '--no-open')) process.argv.push('--app');

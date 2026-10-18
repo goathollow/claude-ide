@@ -117,6 +117,33 @@ await inject(EXE, 'NODE_SEA_BLOB', fs.readFileSync(blob), {
   ...(platform === 'darwin' && { machoSegmentName: 'NODE_SEA' }),
 });
 if (platform === 'darwin') execFileSync('codesign', ['--sign', '-', EXE], { stdio: 'inherit' });
+// Windows gives console programs a console window, so mark this one as a GUI
+// program. Node then discards console output, and errors go to the log file.
+if (platform === 'win32') setWindowsSubsystem(EXE, 2);
+
+// Sets the Subsystem field of a PE executable's header: 2 for a GUI program,
+// 3 for a console program.
+function setWindowsSubsystem(file, subsystem) {
+  const fd = fs.openSync(file, 'r+');
+  try {
+    const buf = Buffer.alloc(4);
+    fs.readSync(fd, buf, 0, 4, 0x3c);
+    const pe = buf.readUInt32LE(0);
+    fs.readSync(fd, buf, 0, 4, pe);
+    const signature = buf.toString('latin1');
+    // The field is 68 bytes into the optional header, which follows the
+    // 4-byte "PE\0\0" signature and the 20-byte file header.
+    const at = pe + 4 + 20 + 68;
+    fs.readSync(fd, buf, 0, 2, at);
+    if (signature !== 'PE\0\0' || ![2, 3].includes(buf.readUInt16LE(0))) {
+      throw new Error(`${file} doesn't look like a Windows executable`);
+    }
+    buf.writeUInt16LE(subsystem, 0);
+    fs.writeSync(fd, buf, 0, 2, at);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
 
 const mb = b => `${(b / 1048576).toFixed(1)} MB`;
 console.log(`\nBuilt ${path.relative(ROOT, EXE)} (${mb(fs.statSync(EXE).size)}) for ${platform}-${arch}, build ${buildId}`);
