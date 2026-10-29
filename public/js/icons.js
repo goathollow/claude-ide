@@ -36,6 +36,7 @@ const PATHS = {
   loader: '<path d="M21 12a9 9 0 1 1-6.22-8.56"/>',
   stop: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
   power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
 };
 
 export function Icon({ name, size = 16, class: cls = '' }) {

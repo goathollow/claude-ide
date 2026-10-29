@@ -24,7 +24,10 @@ export const api = {
 
 // ---------------------------------------------------------------- store
 
-const PERSIST = ['tabs', 'activeTab', 'sidebar', 'sidebarOpen', 'sidebarWidth', 'inspectorOpen', 'theme', 'seen', 'notify', 'mdMode', 'expandedGroups'];
+const PERSIST = [
+  'tabs', 'activeTab', 'sidebar', 'sidebarOpen', 'sidebarWidth', 'inspectorOpen', 'theme', 'seen', 'notify', 'mdMode', 'expandedGroups',
+  'shellOpen', 'shellId', 'shellHeight',
+];
 
 function loadPersisted() {
   try { return JSON.parse(localStorage.getItem('ide.state') || '{}'); } catch { return {}; }
@@ -37,6 +40,11 @@ let state = {
   liveLoaded: false,
   terminals: [],
   terminalsLoaded: false,
+  shells: [],
+  shellOpen: false,
+  shellId: null,
+  shellHeight: 260,
+  shellFocus: 0,
   history: [],
   plans: [],
   recentFolders: [],
@@ -64,6 +72,16 @@ if (!state.tabs.some(t => t.id === 'home')) state.tabs.unshift({ id: 'home', typ
 const subscribers = new Set();
 let persistTimer = null;
 
+function persist() {
+  clearTimeout(persistTimer);
+  persistTimer = null;
+  try {
+    localStorage.setItem('ide.state', JSON.stringify(Object.fromEntries(PERSIST.map(k => [k, state[k]]))));
+  } catch { /* storage unavailable */ }
+}
+// Changes made just before the window closes or reloads still count.
+window.addEventListener('pagehide', () => persistTimer && persist());
+
 export const getState = () => state;
 
 export function setState(patch) {
@@ -72,11 +90,7 @@ export function setState(patch) {
   state = { ...state, ...next };
   for (const fn of subscribers) fn();
   clearTimeout(persistTimer);
-  persistTimer = setTimeout(() => {
-    try {
-      localStorage.setItem('ide.state', JSON.stringify(Object.fromEntries(PERSIST.map(k => [k, state[k]]))));
-    } catch { /* storage unavailable */ }
-  }, 250);
+  persistTimer = setTimeout(persist, 250);
 }
 
 function shallowEqual(a, b) {

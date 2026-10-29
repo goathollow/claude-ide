@@ -94,6 +94,43 @@ export function newChatDialog(cwd) {
   setState({ dialog: { type: 'new-chat', cwd: cwd || null } });
 }
 
+// ---------------------------------------------------------------- shell panel
+
+let shellStarting = false;
+
+// Shows the shell panel, starting a shell in the folder you're working in if
+// none is running, or hides it.
+export async function toggleShell() {
+  const st = getState();
+  if (st.shellOpen && st.shellId) return setState({ shellOpen: false });
+  if (st.shells.some(t => t.id === st.shellId)) return setState(s => ({ shellOpen: true, shellFocus: s.shellFocus + 1 }));
+  if (shellStarting) return;
+  shellStarting = true;
+  try {
+    const shell = await api.post('/api/shells', { cwd: st.explorerRoot || st.info.home });
+    setState(s => ({
+      shells: s.shells.some(t => t.id === shell.id) ? s.shells : [...s.shells, shell],
+      shellId: shell.id,
+      shellOpen: true,
+      shellFocus: s.shellFocus + 1,
+    }));
+  } catch (e) {
+    toast({ kind: 'needs', title: "Couldn't start a shell", text: e.message });
+  } finally {
+    shellStarting = false;
+  }
+}
+
+export function focusShell() {
+  setState(s => ({ shellFocus: s.shellFocus + 1 }));
+}
+
+export async function endShell() {
+  const id = getState().shellId;
+  setState({ shellOpen: false, shellId: null });
+  if (id) await api.del(`/api/terminals/${id}`).catch(() => {});
+}
+
 // ---------------------------------------------------------------- misc
 
 export function showFolder(path) {

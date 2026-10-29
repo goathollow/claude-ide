@@ -363,6 +363,20 @@ input.text:focus, select.text:focus { border-color: var(--accent); }
   background: var(--bg-raised); border-top: 1px solid var(--border); color: var(--muted);
 }
 
+.shell-panel {
+  position: relative; display: flex; flex-direction: column; flex: none;
+  height: var(--shell-h, 260px); max-height: calc(100% - 120px); min-height: 80px;
+  background: var(--bg); border-top: 1px solid var(--border-strong);
+}
+.shell-panel[hidden] { display: none; }
+.shell-resize { position: absolute; left: 0; right: 0; top: -4px; height: 7px; cursor: row-resize; z-index: 5; }
+.shell-head { display: flex; align-items: center; gap: 8px; height: 30px; flex: none; padding: 0 6px 0 12px; }
+.shell-head .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.shell-head .name { font-size: 12px; color: var(--faint); }
+.shell-head .spacer { flex: 1; }
+.shell-panel .term-wrap { padding-top: 0; }
+.shell-panel .term-host { top: 0; }
+
 /* ------------------------------------------------------------ transcript */
 
 .transcript { flex: 1; overflow: auto; padding: 18px 0 40px; }

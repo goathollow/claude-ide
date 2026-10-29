@@ -7,6 +7,11 @@ A local web IDE for keeping track of many Claude Code sessions at once.
   session is doing right now (current tool call or task), its task progress, and its last message.
 - **Embedded terminals.** Start a new chat in any folder, or resume a past one, in a real terminal
   tab inside the IDE. Tabs survive a page reload.
+- **Shell panel.** Ctrl+` (or the terminal button at the top right) opens your shell in a panel
+  under the tabs, in the folder of the session you're looking at, or else the Explorer's folder
+  (Control+` on a Mac, too). Ctrl+`
+  hides it again, and the shell keeps running until you type `exit`, end it with the trash button,
+  or the IDE quits. Drag its top edge to resize it.
 - **History** of every past chat, grouped by project, with search, and a readable transcript view
   showing prompts, replies, tool calls (expand for input, output, and edit diffs), and recaps.
 - **Plans and markdown** in code, split, or rendered preview (Monaco editor). Files reload
@@ -163,6 +168,7 @@ other origin.
 | --- | --- |
 | `CLAUDE_IDE_PORT` | `4477` |
 | `CLAUDE_IDE_CLAUDE_BIN` | `claude` found on PATH |
+| `CLAUDE_IDE_SHELL` | The shell panel's shell: PowerShell on Windows (PowerShell 7 if installed), otherwise your `$SHELL` |
 | `CLAUDE_CONFIG_DIR` | `~/.claude` |
 
 ## Layout

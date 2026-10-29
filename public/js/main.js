@@ -3,10 +3,12 @@ import { useEffect, useRef } from 'preact/hooks';
 import {
   html, api, events, useStore, getState, setState, attention, sessionInfo, sessionIdForTab, basename, shortPath, plain,
 } from './lib.js';
-import { closeTab, openSession, newChatDialog, refreshLists, toast, dismissToast, goHome } from './actions.js';
+import {
+  closeTab, openSession, newChatDialog, refreshLists, toast, dismissToast, goHome, toggleShell, focusShell,
+} from './actions.js';
 import { ActivityBar, Sidebar } from './sidebar.js';
 import { Dashboard } from './dashboard.js';
-import { TerminalView } from './terminal.js';
+import { TerminalView, ShellPanel } from './terminal.js';
 import { TranscriptView } from './transcript.js';
 import { FileView } from './fileview.js';
 import { Inspector } from './inspector.js';
@@ -200,6 +202,7 @@ function TopBar() {
   const needs = counts.needs ? counts.needs.split(',') : [];
   const ready = counts.ready ? counts.ready.split(',') : [];
   const inspectorOpen = useStore(s => s.inspectorOpen);
+  const shellOpen = useStore(s => s.shellOpen && !!s.shellId);
 
   return html`<header class="topbar">
     <div class="brand" onClick=${goHome} style="cursor:pointer"><img src="/icon.svg" alt="" />Claude IDE</div>
@@ -210,6 +213,7 @@ function TopBar() {
         <span class="dot ready"></span>${ready.length} ready</span>`}
     </div>
     <span class="spacer"></span>
+    <button class=${'icon-btn' + (shellOpen ? ' on' : '')} title="Toggle the shell panel (Ctrl+\`)" onClick=${toggleShell}><${Icon} name="terminal" /></button>
     <button class=${'icon-btn' + (inspectorOpen ? ' on' : '')} title="Toggle session details panel" onClick=${() => setState(s => ({ inspectorOpen: !s.inspectorOpen }))}><${Icon} name="panel" /></button>
     <button class="btn primary sm" onClick=${() => newChatDialog()}><${Icon} name="plus" size=${13} /> New chat</button>
   </header>`;
@@ -287,6 +291,7 @@ function App() {
           </div>
           ${inspectorOpen && activeSid && html`<${Inspector} sessionId=${activeSid} />`}
         </div>
+        <${ShellPanel} />
       </section>
     </div>
     <${StatusBar} />
@@ -347,10 +352,29 @@ let linkedSession = /^#session=([\w-]+)$/.exec(location.hash)?.[1];
 if (linkedSession) history.replaceState(null, '', location.pathname);
 
 events.on('terminals', m => {
-  setState({ terminals: m.terminals, terminalsLoaded: true });
+  setState(s => ({
+    terminals: m.terminals,
+    shells: m.shells,
+    terminalsLoaded: true,
+    // The shell exited, another window ended it, or the server restarted.
+    ...(s.shellId && !m.shells.some(t => t.id === s.shellId) ? { shellId: null, shellOpen: false } : {}),
+  }));
   if (linkedSession) openSession(linkedSession);
   linkedSession = null;
 });
+
+// Ctrl+` shows the shell panel and puts the focus in it, or hides it once the
+// focus is there. Listening in the capture phase gets the key before the
+// terminal or editor that has the focus does.
+window.addEventListener('keydown', e => {
+  if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || (e.code !== 'Backquote' && e.key !== '`')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const st = getState();
+  if (st.shellOpen && st.shellId && !document.activeElement?.closest('.shell-panel')) focusShell();
+  else toggleShell();
+}, true);
+
 events.on('reconnected', () => {
   setState({ quit: false });
   refreshLists();

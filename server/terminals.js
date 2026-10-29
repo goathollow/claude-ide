@@ -1,16 +1,18 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import pty from './pty.js';
 import headless from '@xterm/headless';
 import serialize from '@xterm/addon-serialize';
-import { CLAUDE_BIN, childEnv } from './config.js';
+import { CLAUDE_BIN, IS_WIN, childEnv } from './config.js';
 import { isSessionId } from './transcripts.js';
 
-// Claude sessions started from the IDE run in pseudo-terminals owned by this
-// server. A headless xterm mirrors each screen so a browser tab that reconnects
-// gets the current screen back instead of a garbled replay of raw output.
+// Claude sessions started from the IDE, and the shells in its shell panel, run
+// in pseudo-terminals owned by this server. A headless xterm mirrors each
+// screen so a browser tab that reconnects gets the current screen back instead
+// of a garbled replay of raw output.
 
 const { Terminal } = headless;
 const { SerializeAddon } = serialize;
@@ -21,8 +23,9 @@ export const events = new EventEmitter();
 const terminals = new Map();
 
 class HostedTerminal {
-  constructor({ cwd, args, sessionId, name, cols, rows }) {
+  constructor({ kind = 'claude', file = CLAUDE_BIN, args, env = childEnv(), cwd, sessionId, name, cols, rows }) {
     this.id = crypto.randomUUID().slice(0, 8);
+    this.kind = kind;
     this.cwd = cwd;
     this.sessionId = sessionId;
     this.name = name || null;
@@ -40,7 +43,7 @@ class HostedTerminal {
       events.emit('changed');
     });
 
-    this.pty = pty.spawn(CLAUDE_BIN, args, { name: 'xterm-256color', cols, rows, cwd, env: childEnv() });
+    this.pty = pty.spawn(file, args, { name: 'xterm-256color', cols, rows, cwd, env });
     this.pid = this.pty.pid;
     this.pty.onData(d => {
       this.screen.write(d);
@@ -111,6 +114,7 @@ class HostedTerminal {
   info() {
     return {
       id: this.id,
+      kind: this.kind,
       cwd: this.cwd,
       sessionId: this.sessionId,
       name: this.name,
@@ -146,8 +150,39 @@ export function createTerminal({ cwd, resume, name, permissionMode, model, cols 
   return term.info();
 }
 
+// The shell panel's shell: CLAUDE_IDE_SHELL, or PowerShell on Windows (7 if
+// it's installed) and your login shell elsewhere.
+function shellCommand() {
+  if (process.env.CLAUDE_IDE_SHELL) return { file: process.env.CLAUDE_IDE_SHELL, args: [] };
+  if (IS_WIN) {
+    const pwsh = (process.env.PATH || '').split(path.delimiter).filter(Boolean)
+      .map(dir => path.join(dir, 'pwsh.exe')).find(p => fs.existsSync(p));
+    return { file: pwsh || 'powershell.exe', args: ['-NoLogo'] };
+  }
+  const file = [process.env.SHELL, '/bin/bash', '/bin/sh'].find(p => p && fs.existsSync(p));
+  // Like Terminal, start a login shell on macOS.
+  return { file, args: process.platform === 'darwin' ? ['-l'] : [] };
+}
+
+export function createShell({ cwd, cols = 120, rows = 16 }) {
+  cwd = String(cwd || '').trim();
+  if (!path.isAbsolute(cwd) || !fs.existsSync(cwd) || !fs.statSync(cwd).isDirectory()) cwd = os.homedir();
+  const { file, args } = shellCommand();
+  // FORCE_COLOR suits Claude, but would put colour codes in the output of
+  // programs piped to one another in the shell.
+  const env = childEnv();
+  if (!('FORCE_COLOR' in process.env)) delete env.FORCE_COLOR;
+  const term = new HostedTerminal({ kind: 'shell', file, args, env, cwd: path.resolve(cwd), name: path.basename(file, '.exe'), cols, rows });
+  // A shell that has exited is of no further use.
+  term.pty.onExit(() => closeTerminal(term.id));
+  terminals.set(term.id, term);
+  events.emit('changed');
+  return term.info();
+}
+
 export const getTerminal = id => terminals.get(id) || null;
-export const listTerminals = () => [...terminals.values()].map(t => t.info());
+export const listTerminals = () => [...terminals.values()].filter(t => t.kind === 'claude').map(t => t.info());
+export const listShells = () => [...terminals.values()].filter(t => t.kind === 'shell').map(t => t.info());
 
 export function closeTerminal(id) {
   const t = terminals.get(id);

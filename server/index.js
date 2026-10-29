@@ -119,6 +119,7 @@ api.post('/terminals', (req, res) => {
   res.json(terminals.createTerminal(req.body || {}));
 });
 api.delete('/terminals/:id', (req, res) => res.json({ ok: terminals.closeTerminal(req.params.id) }));
+api.post('/shells', (req, res) => res.json(terminals.createShell(req.body || {})));
 
 // Quitting ends the Claude sessions started in the IDE. Every window is told
 // first so it can close as well.
@@ -176,7 +177,7 @@ function onEventsSocket(ws) {
   ws.files = new Set();
   eventClients.add(ws);
   send(ws, { t: 'live', sessions: liveView() });
-  send(ws, { t: 'terminals', terminals: terminals.listTerminals() });
+  send(ws, { t: 'terminals', terminals: terminals.listTerminals(), shells: terminals.listShells() });
   ws.on('message', raw => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
@@ -193,7 +194,7 @@ sessions.events.on('live', live => {
   broadcast({ t: 'live', sessions: liveView() });
 });
 terminals.events.on('changed', () => {
-  broadcast({ t: 'terminals', terminals: terminals.listTerminals() });
+  broadcast({ t: 'terminals', terminals: terminals.listTerminals(), shells: terminals.listShells() });
   broadcast({ t: 'live', sessions: liveView() });
 });
 
@@ -320,7 +321,7 @@ if (QUIT_WHEN_CLOSED) {
   // Give the browser time to start, then quit once no window has been connected
   // for 15 seconds, which leaves time to reload the page. Claude sessions keep
   // running in the background with no window open, and starting the IDE again
-  // opens a window onto them.
+  // opens a window onto them. The shell panel's shells don't keep it running.
   let lastSeen = Date.now() + 45000;
   setInterval(() => {
     if (eventClients.size || terminals.listTerminals().some(t => !t.exited)) lastSeen = Date.now();
@@ -380,9 +381,15 @@ function launch(cmd, args, options = {}) {
     .unref();
 }
 
+let stopping = false;
 function shutdown() {
+  if (stopping) return;
+  stopping = true;
+  server.close();
   terminals.shutdownAll();
-  process.exit(0);
+  // On Windows, node-pty finishes closing a terminal about a second after
+  // killing it. Exiting before then can leave the process stuck, unable to exit.
+  setTimeout(() => process.exit(0), IS_WIN ? 1500 : 0);
 }
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
