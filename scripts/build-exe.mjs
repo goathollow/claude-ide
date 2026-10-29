@@ -109,6 +109,25 @@ try {
   }
   throw e;
 }
+// Explorer, Task Manager and the Start menu show the executable's icon and
+// description, so replace Node's with the IDE's.
+if (platform === 'win32') {
+  const { rcedit } = await import('rcedit');
+  const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  await rcedit(EXE, {
+    icon: path.join(ROOT, 'packaging', 'icon.ico'),
+    'file-version': version,
+    'product-version': version,
+    'version-string': {
+      FileDescription: 'Claude IDE',
+      ProductName: 'Claude IDE',
+      CompanyName: 'Steve Preston',
+      InternalName: 'claude-ide',
+      OriginalFilename: 'claude-ide.exe',
+      LegalCopyright: 'Copyright (c) 2026 Steve Preston. Includes Node.js, copyright Node.js contributors.',
+    },
+  });
+}
 // macOS only runs signed code: drop Node's signature before changing the
 // binary, then sign the result ad hoc.
 if (platform === 'darwin') execFileSync('codesign', ['--remove-signature', EXE], { stdio: 'inherit' });

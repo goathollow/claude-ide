@@ -1,6 +1,7 @@
-# Builds the standalone executable on each platform. Run it from the Actions tab
-# to download the builds from the run's page, or push a version tag (v1.2.3) to
-# also attach them to a GitHub release.
+# Builds the standalone executable on each platform, plus the Windows installer
+# and the Mac app.
+# Run it from the Actions tab to download the builds from the run's page, or
+# push a version tag (v1.2.3) to also attach them to a GitHub release.
 name: Build executables
 
 on:
@@ -29,19 +30,41 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:exe
+      # GitHub's Windows images come with Inno Setup. Install it if one doesn't.
+      - name: Build installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --version=6.7.1 --no-progress -y
+          }
+          npm run build:installer
+      - name: Build Mac app
+        if: runner.os == 'macOS'
+        run: npm run build:app
       # tar keeps the executable bit, which artifacts and releases don't.
       - name: Package
         shell: bash
         run: |
-          mkdir out
+          mkdir out setup
           if [ "$RUNNER_OS" = Windows ]; then
             cp dist/claude-ide.exe out/claude-ide-${{ matrix.target }}.exe
+            cp dist/claude-ide-setup.exe setup/claude-ide-${{ matrix.target }}-setup.exe
+          elif [ "$RUNNER_OS" = macOS ]; then
+            # COPYFILE_DISABLE leaves out the build machine's extended attributes.
+            COPYFILE_DISABLE=1 tar -czf out/claude-ide-${{ matrix.target }}.tar.gz -C dist "Claude IDE.app"
           else
             tar -czf out/claude-ide-${{ matrix.target }}.tar.gz -C dist claude-ide
           fi
+      # Without archiving, each upload takes a single file.
       - uses: actions/upload-artifact@v7
         with:
           path: out/*
+          archive: false
+      - if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          path: setup/*
           archive: false
 
   release:

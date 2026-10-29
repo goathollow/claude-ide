@@ -21,8 +21,8 @@ const ROOT = globalThis.__CLAUDE_IDE_ROOT || path.resolve(path.dirname(fileURLTo
 const nm = p => path.join(ROOT, 'node_modules', p);
 
 // The standalone executable has no console window to stop it with, so when it
-// opens the IDE's window itself, it quits once its last window has closed and
-// the Claude sessions started in it have ended.
+// opens the IDE's window itself (or the Mac app does, with --mac-app), it quits
+// once its last window has closed and the Claude sessions started in it have ended.
 const QUIT_WHEN_CLOSED = Boolean(globalThis.__CLAUDE_IDE_ROOT) && !process.argv.includes('--no-open');
 
 // ---------------------------------------------------------------- request guard
@@ -296,6 +296,7 @@ server.on('error', async err => {
   // Launching again (say, double-clicking the executable twice) opens the running IDE.
   const running = await fetch(`${URL_}/api/info`, { signal: AbortSignal.timeout(2000) }).then(r => r.ok, () => false);
   if (running) {
+    // The Mac app reads the address from this line, or the one in listen() below.
     console.log(`Claude IDE is already running at ${URL_}`);
     openRequested();
     setTimeout(() => process.exit(0), 300);
@@ -358,7 +359,13 @@ function appBrowser() {
     .find(b => fs.existsSync(b));
 }
 
+// The executable inside the Mac app, which shows the IDE in windows of its own.
+const MAC_APP = process.platform === 'darwin' && globalThis.__CLAUDE_IDE_ROOT
+  && /^(.+\.app)\/Contents\/MacOS\/[^/]+$/.exec(process.execPath)?.[1];
+
 function openWindow(url, appMode) {
+  // Opening the app brings up its window, or opens one if it has none.
+  if (appMode && MAC_APP) return launch('open', [MAC_APP]);
   const browser = appMode && appBrowser();
   if (browser) launch(browser, [`--app=${url}`]);
   else if (IS_WIN) launch('cmd', ['/c', 'start', '', url], { windowsHide: true });

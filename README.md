@@ -37,50 +37,74 @@ python3` on Debian or Ubuntu). Windows and macOS use prebuilt binaries.
 ## Standalone executable
 
 The IDE also comes as a single executable that runs without Node.js. Each
-[release](https://github.com/goathollow/claude-ide/releases) has one for Windows, macOS and Linux.
-On macOS and Linux, this installs the latest one to `~/.local/bin` (run it again to update):
+[release](https://github.com/goathollow/claude-ide/releases) has an installer for Windows (and the
+bare executable), a Mac app, and the executable for Linux.
+
+On Windows, download and run
+[claude-ide-windows-x64-setup.exe](https://github.com/goathollow/claude-ide/releases/latest/download/claude-ide-windows-x64-setup.exe).
+It installs Claude IDE for your user, without administrator rights, and adds it to the Start
+menu. To update, run a newer installer. If the IDE is running, the installer closes it first,
+which stops the Claude sessions running in it. Uninstall it from Settings > Apps.
+
+On macOS and Linux, this installs the latest release (run it again to update):
 
 ```
 curl -fsSL https://raw.githubusercontent.com/goathollow/claude-ide/main/install.sh | sh
 ```
 
-Set `CLAUDE_IDE_VERSION` (such as `v0.2.1`) or `CLAUDE_IDE_INSTALL_DIR` to change what it installs
-or where.
+On macOS it installs the Claude IDE app in `/Applications`, or `~/Applications` if you can't write
+to `/Applications`. On Linux it installs the executable. Either way, `claude-ide` in
+`~/.local/bin` starts it from a terminal. Set `CLAUDE_IDE_VERSION` (such as `v0.2.1`),
+`CLAUDE_IDE_INSTALL_DIR` (for `claude-ide`) or `CLAUDE_IDE_APP_DIR` (for the Mac app) to change
+what it installs or where.
 
 To build it yourself:
 
 ```
 npm install
-npm run build:exe   # writes dist/claude-ide, or dist\claude-ide.exe on Windows
+npm run build:exe         # writes dist/claude-ide, or dist\claude-ide.exe on Windows
+npm run build:installer   # Windows only: writes dist\claude-ide-setup.exe
+npm run build:app         # macOS only: writes dist/Claude IDE.app
 ```
 
-That builds for the system you run it on. To build for every platform, run the **Build
-executables** workflow from the repo's Actions tab. It builds on GitHub's machines for Windows
-(x64), macOS (Apple silicon and Intel) and Linux (x64 and ARM), and puts the files on the run's
-page. Pushing a version tag such as `v0.2.0` also attaches them to that GitHub release.
+`build:exe` builds for the system you run it on. `build:installer` needs
+[Inno Setup 6](https://jrsoftware.org/isinfo.php), and `build:app` needs Xcode or its command line
+tools (`xcode-select --install`). To build for every platform, run the **Build executables**
+workflow from the repo's Actions tab. It builds on GitHub's machines for Windows (x64), macOS
+(Apple silicon and Intel) and Linux (x64 and ARM), and puts the files on the run's page. Pushing a
+version tag such as `v0.2.0` also attaches them to that GitHub release.
 
 The executable is a [Node single executable application](https://nodejs.org/api/single-executable-applications.html):
 a copy of the Node runtime with the server, web UI and node-pty embedded. It's 100-130 MB, almost
-all of it the Node runtime. It doesn't use Electron. The app window is your installed Chrome, Edge,
-Chromium or Brave in app mode, or your default browser if none of those is installed.
+all of it the Node runtime. It doesn't use Electron. On Windows and Linux, the app window is your
+installed Chrome, Edge, Chromium or Brave in app mode, or your default browser if none of those is
+installed. The Mac app has windows of its own, which use the WebKit engine built into macOS (the
+one Safari uses), and runs the executable inside it as its server.
 
-- **Windows:** double-click `claude-ide.exe`. It opens only the IDE's window, with no console.
-  Problems that keep it from starting, like the port being taken, appear in a message box.
-- **macOS:** run `claude-ide` in a terminal, or double-click it in Finder, which runs it in
-  Terminal. Closing that terminal doesn't stop the IDE. The build isn't notarized by Apple, so
-  macOS refuses to open a copy downloaded with a browser and offers to move it to the Trash. The
-  install command above avoids that. For a browser download, run
-  `xattr -d com.apple.quarantine claude-ide` once, or click **Open Anyway** under System Settings >
-  Privacy & Security after the first attempt.
+- **Windows:** start Claude IDE from the Start menu, or double-click `claude-ide.exe`. It opens
+  only the IDE's window, with no console. Problems that keep it from starting, like the port being
+  taken, appear in a message box.
+- **macOS:** open Claude IDE from Applications or Spotlight, or run `claude-ide` in a terminal. It
+  has its own Dock icon and menus, and **File > New Window** (⌘N) opens another window. Closing
+  its last window, or quitting it with ⌘Q, leaves its Claude sessions running in the background,
+  like closing the window on other systems. Opened from the Dock or Finder, it reads your login
+  shell's environment, so Claude finds the same programs as in a terminal.
+- The Mac app isn't notarized by Apple, so macOS refuses to open a copy downloaded with a browser
+  and offers to move it to the Trash. The install command above avoids that. For a browser
+  download, click **Open Anyway** under System Settings > Privacy & Security after the first
+  attempt, or run `xattr -dr com.apple.quarantine "Claude IDE.app"` once. Because it isn't signed
+  with an Apple Developer ID either, macOS may ask again after an update before it, or Claude in
+  it, reads folders such as Documents or Desktop.
 - **Linux:** run `claude-ide` in a terminal. Closing that terminal doesn't stop the IDE. Release
   builds are made on Ubuntu 22.04 and need a distribution at least that recent.
 - Closing the IDE's last window leaves the Claude sessions started in it running in the
   background, and it notifies you when one needs you or finishes (see
-  [How it works](#how-it-works)). Start the IDE again to open a window onto them. Once none are running and no window
-  has been open for 15 seconds, it quits by itself.
+  [How it works](#how-it-works)). Start the IDE again to open a window onto them. Once none are
+  running and no window has been open for 15 seconds, it quits by itself.
 - **Quit** (the power button at the bottom left) quits right away, ending those sessions. It asks
   first while any are running.
-- If the IDE is already running, starting it again just opens another window.
+- If the IDE is already running, starting it again just opens another window. On macOS it brings
+  up the app instead.
 - `--open` opens a browser tab instead of an app window, and otherwise works the same way.
   `--no-open` opens nothing and keeps the server running until it's stopped with **Quit** (or, on
   macOS and Linux, Ctrl+C).
@@ -88,7 +112,8 @@ Chromium or Brave in app mode, or your default browser if none of those is insta
   `~/Library/Caches/claude-ide` (macOS) or `~/.cache/claude-ide` (Linux), then removes folders left
   by older builds. Errors are also written to `claude-ide.log` in that folder.
 - The `claude` CLI still has to be installed.
-- On Windows the executable isn't code-signed, so SmartScreen may warn the first time you run it.
+- On Windows the executable and installer aren't code-signed, so SmartScreen may warn the first
+  time you run them. Click **More info**, then **Run anyway**.
 
 The build embeds the Node version that runs `npm run build:exe`. On Linux that has to be an
 official build from nodejs.org (or nvm, fnm, etc.), not a distribution's `nodejs` package.
@@ -118,7 +143,8 @@ you or finishes. It uses a toast shown through PowerShell on Windows, `osascript
   executable also registers `claude-ide://` links there, so clicking a notification opens the IDE
   at that session. Run from source, a click opens the IDE in your browser instead.
 - **macOS:** notifications sent this way belong to Script Editor, so clicking one opens Script
-  Editor rather than the IDE.
+  Editor rather than the IDE. The bell's notifications, which the Mac app shows while its window
+  is open, come from Claude IDE, and clicking one opens its session.
 
 New chats are launched as `claude --session-id <uuid>` (plus `--name`, `--model` and
 `--permission-mode` if chosen) and resumed with `claude --resume <id>`, using
@@ -154,8 +180,13 @@ server/
   vendor.js       browser libraries served from node_modules
 packaging/
   sea-main.cjs    entry point of the standalone executable
+  installer.iss   Inno Setup script for the Windows installer
+  icon.ico        the executable's and installer's icon
+  macos/          the Mac app (ClaudeIDE.swift), its Info.plist and icon
 scripts/
   build-exe.mjs   builds the standalone executable
+  build-installer.mjs  builds the Windows installer
+  build-mac-app.mjs    builds the Mac app
 .github/workflows/
   build.yml       builds it for every platform
 install.sh        installs a release build on macOS or Linux

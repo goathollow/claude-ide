@@ -8,7 +8,9 @@
     "start": "node server/index.js",
     "open": "node server/index.js --open",
     "app": "node server/index.js --app",
-    "build:exe": "node scripts/build-exe.mjs"
+    "build:exe": "node scripts/build-exe.mjs",
+    "build:installer": "node scripts/build-installer.mjs",
+    "build:app": "node scripts/build-mac-app.mjs"
   },
   "type": "module",
   "dependencies": {
@@ -33,7 +35,8 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
-    "postject": "^1.0.0-alpha.6"
+    "postject": "^1.0.0-alpha.6",
+    "rcedit": "^5.0.2"
   },
   "allowScripts": {
     "node-pty@1.1.0": true,

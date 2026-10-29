@@ -9,7 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const util = require('node:util');
 const zlib = require('node:zlib');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { createRequire } = require('node:module');
 const sea = require('node:sea');
 
@@ -67,6 +67,39 @@ function alertBox(message) {
   }).on('error', () => {}).unref();
 }
 
+// Started from the Dock or Finder, the Mac app gets a bare environment instead
+// of the one your shell sets up, so PATH lacks Homebrew, npm and ~/.local/bin,
+// which Claude and the tools it runs need. Take the environment a login shell
+// sets up, as a terminal would.
+function loadShellEnv() {
+  const shell = process.env.SHELL || '/bin/zsh';
+  // The shell writes it to a file: startup files can print to stdout, and a
+  // program one of them leaves running would hold a pipe open.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ide-env-'));
+  const file = path.join(dir, 'env');
+  try {
+    const { error } = spawnSync(shell, ['-l', '-i', '-c', '/usr/bin/env -0 > "$CLAUDE_IDE_ENV_FILE"'], {
+      env: { ...process.env, CLAUDE_IDE_ENV_FILE: file },
+      stdio: 'ignore',
+      timeout: 10000,
+      // Interactive shells ignore SIGTERM.
+      killSignal: 'SIGKILL',
+    });
+    if (error?.code === 'ETIMEDOUT') throw new Error(`${shell} took more than 10 seconds to start`);
+    if (error) throw error;
+    if (!fs.existsSync(file)) throw new Error(`${shell} didn't run the command`);
+    for (const entry of fs.readFileSync(file, 'utf8').split('\0')) {
+      const i = entry.indexOf('=');
+      const name = entry.slice(0, i);
+      if (i > 0 && !['_', 'SHLVL', 'PWD', 'OLDPWD', 'CLAUDE_IDE_ENV_FILE'].includes(name)) process.env[name] = entry.slice(i + 1);
+    }
+  } catch (e) {
+    console.error(`Couldn't read your shell's environment, so the IDE may not find the programs on your PATH: ${e.message}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function unpack(base) {
   const id = sea.getAsset('build-id', 'utf8').trim();
   const root = path.join(base, `app-${id}`);
@@ -114,7 +147,10 @@ if (!runPtyHelper()) {
   logErrors(base);
   globalThis.__CLAUDE_IDE_ALERT = alertBox;
   globalThis.__CLAUDE_IDE_ROOT = unpack(base);
+  // The Mac app (packaging/macos) runs this with --mac-app and shows the IDE
+  // in its own windows.
+  if (process.platform === 'darwin' && process.argv.includes('--mac-app')) loadShellEnv();
   // Double-clicking the executable should open the app window.
-  if (!process.argv.some(a => a === '--app' || a === '--open' || a === '--no-open')) process.argv.push('--app');
+  if (!process.argv.some(a => ['--app', '--open', '--no-open', '--mac-app'].includes(a))) process.argv.push('--app');
   require('../server/index.js');
 }
