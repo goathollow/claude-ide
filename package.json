@@ -1,6 +1,6 @@
 {
   "name": "claude-ide",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A local web IDE for managing Claude Code sessions",
   "license": "MIT",
   "main": "server/index.js",
